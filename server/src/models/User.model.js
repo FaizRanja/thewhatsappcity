@@ -60,3 +60,5 @@ UserSchema.methods.validateSecretKey = function (inputSecretKey) {
 };
 
 module.exports = mongoose.model("User", UserSchema);
+
+

@@ -120,21 +120,15 @@ exports.getUser = AsyncHandler(async (req, res, next) => {
 });
 
 // get all register user data
-exports.getAllRegisterUser = AsyncHandler(async (req, res, next) => {
-  try {
-    const users=await User.find()
-    res.status(200).json({ 
-      success: true,
-      users 
-    });
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Internal server error' 
-    });
-  }
-});
+exports.getAllRegisterUser = async (req, res) => {
+  const user = req.user; // req.user is set by the authMiddleware
+  res.status(200).json({
+    success: true,
+    user: { secretKey: user.secretKey }
+  });
+};
+
+
 
 
 

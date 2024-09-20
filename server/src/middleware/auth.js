@@ -1,17 +1,18 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User.model");
-const AsyncHandler = require("../utils/AsynicHandler");
+; // Typo fixed (AsynicHandler -> AsyncHandler)
 const ApiErrorHandler = require("../utils/ApiResponseHandler");
+const AsynicHandler = require("../utils/AsynicHandler");
 
-exports.isAuthenticated = AsyncHandler(async (req, res, next) => {
-  const { token } = req.cookies; // assuming token is stored in cookies
-
+exports.isAuthenticated = AsynicHandler(async (req, res, next) => {
+  const { token } = req.cookies;
   if (!token) {
-    return next(new ApiErrorHandler("Please login to access this resource", 401));
+    return next(new ApiErrorHandler("Please Login to access this resource", 401));
   }
-
-  const decodedData = jwt.verify(token, process.env.JWT_SECRET_KEY);
+  const decodedData = jwt.verify(token, process.env.JWT_SECRET);
   req.user = await User.findById(decodedData.id);
-
   next();
 });
+
+
+

@@ -7,6 +7,7 @@ const { createWhatsappSection } = require('./WhatsappController');
 const User = require('../models/User.model');
 
 const { phoneNumberToIdMap, allSectionObject } = require('./WhatsappController'); // Ensure correct import path
+const ApiErrorHandler = require('../utils/ApiResponseHandler');
 
 // Get all user accounts when the QR code is scanned
 exports.getAllData = AsynicHandler(async (req, res) => {
@@ -46,10 +47,26 @@ exports.getAllData = AsynicHandler(async (req, res) => {
   })
 // Get alll Messages
   exports.getmessage = AsynicHandler(async (req, res, next) => {
-    try {
-      const { keyword, date } = req.query;
+    const token = req.headers['authorization']?.split(' ')[1];
+    const secretKey = req.headers['x-secret-key']; // Correctly get secret key from the header
   
-      // Build query
+    try {
+      if (!token || !secretKey) {
+        return next(new ApiErrorHandler(401, 'Authorization credentials missing'));
+      }
+      // Validate token and secret key
+      const user = await User.findOne({ secretKey });
+      if (!user) {
+        return next(new ApiErrorHandler(404, 'User not found'));
+      }
+  
+      const isSecretKeyValid = await user.validateSecretKey(secretKey);
+      if (!isSecretKeyValid) {
+        return next(new ApiErrorHandler(401, 'Invalid secret key'));
+      }
+  
+      // Build the query object based on the provided filters
+      const { keyword, date } = req.query;
       const query = {};
       if (keyword) {
         query.$or = [
@@ -58,54 +75,74 @@ exports.getAllData = AsynicHandler(async (req, res) => {
           { messageContent: { $regex: keyword, $options: 'i' } }
         ];
       }
+  
       if (date) {
-        // Parse date to ensure it's in the correct format
         const parsedDate = new Date(date);
-        if (!isNaN(parsedDate.getTime())) { // Check if date is valid
+        if (!isNaN(parsedDate.getTime())) {
           query.timestamp = { $gte: parsedDate };
+        } else {
+          return next(new ApiErrorHandler(400, 'Invalid date format'));
         }
       }
   
-      // Fetch messages based on the constructed query and sort them by timestamp in descending order
       const scans = await Message.find(query).sort({ timestamp: -1 });
-  
-      res.json({ scans });
+      res.json({ success: true, scans });
     } catch (error) {
-      console.error('Error fetching messages:', error);
-      res.status(500).json({ message: 'Internal server error' });
+      console.error('Error retrieving messages:', error);
+      return next(new ApiErrorHandler(500, 'Internal server error'));
     }
   });
 
   // Get all Recived MEsssage
-exports.getRecivedmessage= AsynicHandler(async (req, res, next) => {
-  try {
-      const { keyword, date } = req.query;
+  exports.getRecivedmessage = AsynicHandler(async (req, res, next) => {
+    const token = req.headers['authorization']?.split(' ')[1];
+    const secretKey = req.headers['x-secret-key']; // Correctly get secret key from the header
   
-      // Build query
-      const query = {};
-      if (keyword) {
-          query.$or = [
-              { senderNumber: { $regex: keyword, $options: 'i' } },
-              { recipientNumber: { $regex: keyword, $options: 'i' } },
-              { messageContent: { $regex: keyword, $options: 'i' } }
-          ];
-      }
-      if (date) {
-          // Parse date to ensure it's in the correct format
-          const parsedDate = new Date(date);
-          if (!isNaN(parsedDate.getTime())) { // Check if date is valid
-              query.timestamp = { $gte: parsedDate };
-          }
+    try {
+      if (!token || !secretKey) {
+        return next(new ApiErrorHandler(401, 'Authorization credentials missing'));
       }
 
-      // Fetch messages based on the constructed query
+      // Validate token and secret key
+      const user = await User.findOne({ secretKey });
+      if (!user) {
+        return next(new ApiErrorHandler(404, 'User not found'));
+      }
+  
+      const isSecretKeyValid = await user.validateSecretKey(secretKey);
+      if (!isSecretKeyValid) {
+        return next(new ApiErrorHandler(401, 'Invalid secret key'));
+      }
+  
+      // Build the query object based on the provided filters
+      const { keyword, date } = req.query;
+      const query = {};
+      if (keyword) {
+        query.$or = [
+          { senderNumber: { $regex: keyword, $options: 'i' } },
+          { recipientNumber: { $regex: keyword, $options: 'i' } },
+          { messageContent: { $regex: keyword, $options: 'i' } }
+        ];
+      }
+  
+      if (date) {
+        const parsedDate = new Date(date);
+        if (!isNaN(parsedDate.getTime())) {
+          query.timestamp = { $gte: parsedDate };
+        } else {
+          return next(new ApiErrorHandler(400, 'Invalid date format'));
+        }
+      }
+  
       const scans = await Recived.find(query).sort({ timestamp: -1 });
-      res.json({ scans });
-  } catch (error) {
+      res.json({ success: true, scans });
+    } catch (error) {
       console.error('Error retrieving messages:', error);
-      res.status(500).json({ message: 'Internal server error' });
-  }
-});
+      return next(new ApiErrorHandler(500, 'Internal server error'));
+    }
+  });
+  
+  
 
 // Get Total User I mean All User are store in database
 exports.getLoginUser=AsynicHandler(async(req,res,next)=>{
@@ -180,7 +217,7 @@ exports.CreateSection = async (req, res, next) => { // Added next here
   if (!secretKey) {
     return res.status(400).json({ error: 'Secret key is required' });
   }
-  
+
   try {
     // Check if the secret key is valid and belongs to the user
     const user = await User.findOne({ secretKey });
@@ -204,6 +241,8 @@ exports.CreateSection = async (req, res, next) => { // Added next here
     next(new ApiErrorHandler(500, 'Failed to create WhatsApp section')); // Pass error to next
   }
 };
+
+
 
 // API to log out a session
 exports.sectionLogout=AsynicHandler(async (req,res,next)=>{

@@ -7,7 +7,7 @@ const path = require('path');
 const os = require('os');
 const { promises: fsPromises } = require('fs');
 const AsynicHandler = require('../utils/AsynicHandler');
-const User =require ('../models/User.model')
+const User = require('../models/User.model');
 const ApiErrorHandler = require("../utils/ApiError.js");
 
 let allSectionObject = {};
@@ -34,17 +34,14 @@ const removeDirectory = async (dirPath) => {
   }
 };
 
-
 // Create a WhatsApp session
 const createWhatsappSection = async (id) => {
   return new Promise((resolve, reject) => {
-    // Check if a session already exists
     if (allSectionObject[id]) {
       console.log(`Session already exists for id: ${id}`);
       return resolve({ message: 'Session already exists for this WhatsApp ID' });
     }
 
-    // Initialize the WhatsApp Client
     const client = new Client({
       puppeteer: {
         headless: true,
@@ -55,41 +52,33 @@ const createWhatsappSection = async (id) => {
       authStrategy: new LocalAuth({ clientId: id }),
     });
 
-    // Timeout to auto-close QR code after 15 seconds if not scanned
     let qrTimeout;
 
-    // Generate QR Code and send it to the frontend
     client.on('qr', async (qr) => {
       console.log('QR Code received:', qr);
-
-      // Check if the session status is "QR Generated" and not connected
       const existingSession = await QRScan.findOne({ whatsappId: id });
       if (existingSession && existingSession.status === 'Connected') {
         console.log('Session already connected, QR code not required');
         return resolve({ message: 'Session is already connected' });
       }
       
-      // Set a 15-second timeout to close the QR code if not scanned
       qrTimeout = setTimeout(async () => {
         console.log('QR code expired after 15 seconds, closing session');
-       
-        client.destroy(); // Destroy client to close session
+        client.destroy();
         delete allSectionObject[id];
-      }, 15000); // 15 seconds timeout
-
+      }, 15000);
 
       resolve({ message: 'QR Code generated', qrCode: qr });
     });
 
-    // When the client is ready after scanning
     client.on('ready', async () => {
       console.log('Client is ready');
       try {
-        clearTimeout(qrTimeout); // Clear QR timeout once connected
+        clearTimeout(qrTimeout);
         const phoneNumber = client.info.wid._serialized.split('@')[0];
         await QRScan.findOneAndUpdate(
           { whatsappId: id },
-          { status: 'Connected', phoneNumber, qrCode: null }, // Clear QR code after connecting
+          { status: 'Connected', phoneNumber, qrCode: null },
           { new: true, upsert: true }
         );
         phoneNumberToIdMap[phoneNumber] = id;
@@ -98,14 +87,27 @@ const createWhatsappSection = async (id) => {
         console.error('Error saving QR scan data:', error);
       }
     });
+    const formattedNumber = `${number.replace('+', '')}@c.us`;
 
-    // Remaining event handlers (message, disconnected, etc.)
     client.on('message', async (msg) => {
-      // Your existing message handling code
+      console.log('Message received:', msg);
+      try {
+        await Recived.create({
+          senderId: msg.from, // Add this field
+          senderNumber: msg.from,
+          recipientNumber: msg.to,
+          messageContent: msg.body,
+          messageType: msg.type,
+          receivedAt: new Date()
+        });
+      } catch (error) {
+        console.error('Error saving received message:', error);
+      }
     });
 
     client.on('disconnected', async (reason) => {
-      // Your existing disconnected handling code
+      console.log('Client disconnected:', reason);
+      delete allSectionObject[id];
     });
 
     client.on('auth_failure', (message) => {
@@ -116,7 +118,6 @@ const createWhatsappSection = async (id) => {
       console.error('WhatsApp client error:', error);
     });
 
-    // Initialize the client
     client.initialize().then(() => {
       console.log('WhatsApp client initialized');
     }).catch((error) => {
@@ -125,37 +126,31 @@ const createWhatsappSection = async (id) => {
   });
 };
 
-
-
+// Send Message function
 const SendMessage = async (req, res, next) => {
   const { phoneNumber, number, message, fileType, file, secretKey } = req.body;
   const data = { phoneNumber, number, message, fileType, file };
   console.log('SendMessage received:', data);
 
-  // Check if the phone number and other required fields are valid
   if (!phoneNumber || !number || (!message && !file) || !phoneNumberToIdMap[phoneNumber] || !secretKey) {
     console.error('Invalid input data:', data);
     return res.status(400).json({ status: 'Failed', error: 'Invalid input data' });
   }
 
-  // Check if the secret key is valid
   const user = await User.findOne({ secretKey });
   if (!user) {
     return next(new ApiErrorHandler(404, "User not found"));
   }
 
-  // Validate secret key
   const isSecretKeyValid = user.validateSecretKey(secretKey);
   if (!isSecretKeyValid) {
     return next(new ApiErrorHandler(401, "Invalid secret key"));
   }
 
-  // Format the phone number for WhatsApp
   const formattedNumber = `${number.replace('+', '')}@c.us`;
-  const id = phoneNumberToIdMap[phoneNumber]; // Retrieve client ID associated with the phone number
+  const id = phoneNumberToIdMap[phoneNumber];
   console.log('Formatted Number:', formattedNumber);
 
-  // Get the WhatsApp client from the stored sessions
   const client = allSectionObject[id];
   if (!client) {
     console.error('Client not found for phone number:', phoneNumber);
@@ -163,10 +158,8 @@ const SendMessage = async (req, res, next) => {
   }
 
   try {
-    // Extract sender number from client or use the provided ID
     const senderNumber = client.info.wid.user || id;
 
-    // Create a new message record in the database with 'waiting' status
     const newMessage = await Message.create({
       senderId: id,
       senderNumber,
@@ -175,7 +168,6 @@ const SendMessage = async (req, res, next) => {
       status: 'waiting',
     });
 
-    // Handle sending text messages
     if (message) {
       console.log(`Sending text message to ${formattedNumber}: ${message}`);
       await client.sendMessage(formattedNumber, message);
@@ -183,7 +175,6 @@ const SendMessage = async (req, res, next) => {
       return res.status(200).json({ status: 'Message sent', senderNumber: phoneNumber, recipientNumber: number });
     }
 
-    // Handle sending media files
     if (file && fileType) {
       console.log(`Sending media file to ${formattedNumber}`);
       const media = new MessageMedia(fileType, file.toString('base64'), 'file');
@@ -192,7 +183,6 @@ const SendMessage = async (req, res, next) => {
       return res.status(200).json({ status: 'File sent', senderNumber: phoneNumber, recipientNumber: number });
     }
 
-    // If no valid input, throw an error
     throw new Error('Invalid input data');
   } catch (error) {
     console.error('Error sending message:', error);
@@ -203,11 +193,8 @@ const SendMessage = async (req, res, next) => {
   }
 };
 
-
-
-
-// Function for relink Whatsapp Account
-const    generateCodeforRelink = AsynicHandler(async (req,res,next)=>{
+// Function for relink WhatsApp Account
+const generateCodeforRelink = AsynicHandler(async (req, res, next) => {
   const { whatsappId } = req.body;
 
   if (!whatsappId) {
@@ -262,8 +249,6 @@ const    generateCodeforRelink = AsynicHandler(async (req,res,next)=>{
         { status: 'Auth Failure' },
         { new: true }
       );
-
-      
     } catch (error) {
       console.error('Error updating QR scan status:', error);
     }
@@ -290,12 +275,6 @@ const    generateCodeforRelink = AsynicHandler(async (req,res,next)=>{
     console.error('Failed to initialize WhatsApp client:', error);
     if (!res.headersSent) res.status(500).json({ error: 'Failed to initialize WhatsApp client' });
   }
-})
+});
 
-
-
-
-module.exports = { createWhatsappSection ,SendMessage ,generateCodeforRelink };
-
-// Endpoint to handle section creation and return QR code
-
+module.exports = { createWhatsappSection, SendMessage, generateCodeforRelink };

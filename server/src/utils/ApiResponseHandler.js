@@ -1,10 +1,10 @@
-function ApiResponseHandler(statusCode, data, message = "Success") {
-    return {
-        statusCode: statusCode,
-        data: data,
-        message: message,
-        success: statusCode < 400
-    };
+class ApiErrorHandler extends Error{
+    constructor(message,statusCode){
+        super(message)
+        this.statusCode = statusCode
+
+        Error.captureStackTrace(this,this.constructor)
+    }
 }
 
-module.export = ApiResponseHandler;
+module.exports=ApiErrorHandler 

@@ -19,12 +19,14 @@ cloudinary.config({
 const app = express();
 
 // Middleware
+
 app.use(cors({
-  origin: 'http://localhost:5173', // Your frontend origin
-  methods: ['GET', 'POST', 'DELETE', 'PUT'],
-  allowedHeaders: ['Content-Type'],
-  credentials: true,
+  origin: 'http://localhost:5173',  // Your React frontend origin
+  credentials: true,  // Allow credentials to be sent
 }));
+
+
+
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: true, limit: "20kb" }));
 app.use(cookieParser());
@@ -35,10 +37,9 @@ const storage = multer.diskStorage({
     cb(null, "./public/temp")
   },
   filename: function (req, file, cb) {
-    
     cb(null, file.originalname)
   }
-})
+});
 const upload = multer({ storage });
 
 // Cloudinary upload API
@@ -46,7 +47,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
-  
   try {
     // Create a stream for Cloudinary upload
     const uploadStream = cloudinary.uploader.upload_stream(
@@ -58,7 +58,6 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         res.json({ url: result.secure_url });
       }
     );
-
     // Pipe the file stream to Cloudinary
     req.file.stream.pipe(uploadStream);
   } catch (error) {
@@ -68,9 +67,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 // Import routes
 const userRoutes = require("./routes/User.routes");
-const whatsappRoutes=require("./routes/Whatsapp.route")
+const whatsappRoutes = require("./routes/Whatsapp.route");
 app.use("/api/v1/user", userRoutes);
-app.use('/api/v1/qr-scans',whatsappRoutes)
+app.use('/api/v1/qr-scans', whatsappRoutes);
 
 // Export app for use in server.js
 module.exports = { app };
