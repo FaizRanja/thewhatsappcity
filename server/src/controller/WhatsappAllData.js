@@ -45,6 +45,7 @@ exports.getAllData = AsynicHandler(async (req, res) => {
       res.status(500).json({ message: 'Failed to refresh data', error: error.message });
     }
   })
+  
 // Get alll Messages
   exports.getmessage = AsynicHandler(async (req, res, next) => {
     const token = req.headers['authorization']?.split(' ')[1];
@@ -92,6 +93,10 @@ exports.getAllData = AsynicHandler(async (req, res) => {
       return next(new ApiErrorHandler(500, 'Internal server error'));
     }
   });
+// sahdjkashfksjabfdsaf
+dsafdasnfkdsa
+// dsa
+
 
   // Get all Recived MEsssage
   exports.getRecivedmessage = AsynicHandler(async (req, res, next) => {
@@ -160,6 +165,36 @@ exports.getLoginUser=AsynicHandler(async(req,res,next)=>{
       })
     }
     })
+    exports.getLoginUser=AsynicHandler(async(req,res,next)=>{
+      try {
+        const usercount=await User.countDocuments()
+        res.status(200).json({
+          success:true,
+          count:usercount,
+        })
+      } catch (error) {
+        console.log('Error feaching user '+error)
+        res.status(500).json({
+          success:false,
+          error: "Server Error",
+        })
+      }
+      })
+      exports.getLoginUser=AsynicHandler(async(req,res,next)=>{
+        try {
+          const usercount=await User.countDocuments()
+          res.status(200).json({
+            success:true,
+            count:usercount,
+          })
+        } catch (error) {
+          console.log('Error feaching user '+error)
+          res.status(500).json({
+            success:false,
+            error: "Server Error",
+          })
+        }
+        })
 // Get all  send  Message in Your Database i mean all Total message are store 
     exports.sentmessage=AsynicHandler(async(req,res,next)=>{
         try {
@@ -226,6 +261,7 @@ exports.CreateSection = async (req, res, next) => { // Added next here
       return next(new ApiErrorHandler(400, "User not found")); // Pass error to next
     }
 
+    
     const isSecretKeyValid = user.validateSecretKey(secretKey);
     if (!isSecretKeyValid) {
       return next(new ApiErrorHandler(401, "Your secret key does not match")); // Pass error to next

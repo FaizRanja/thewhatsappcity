@@ -36,93 +36,92 @@ const removeDirectory = async (dirPath) => {
 
 // Create a WhatsApp session
 const createWhatsappSection = async (id) => {
-  return new Promise((resolve, reject) => {
-    if (allSectionObject[id]) {
-      console.log(`Session already exists for id: ${id}`);
-      return resolve({ message: 'Session already exists for this WhatsApp ID' });
-    }
-
-    const client = new Client({
-      puppeteer: {
-        headless: true,
-        executablePath: os.platform() === 'win32' ? "C:/Program Files/Google/Chrome/Application/chrome.exe" :
-          os.platform() === 'darwin' ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" :
-            "/usr/bin/google-chrome"
-      },
-      authStrategy: new LocalAuth({ clientId: id }),
-    });
-
-    let qrTimeout;
-
-    client.on('qr', async (qr) => {
-      console.log('QR Code received:', qr);
-      const existingSession = await QRScan.findOne({ whatsappId: id });
-      if (existingSession && existingSession.status === 'Connected') {
-        console.log('Session already connected, QR code not required');
-        return resolve({ message: 'Session is already connected' });
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Check if session already exists
+      if (allSectionObject[id]) {
+        console.log(`Session already exists for id: ${id}, destroying existing session...`);
+        await allSectionObject[id].destroy();  // Destroy the existing session
+        delete allSectionObject[id];           // Remove session from the object
       }
-      
-      qrTimeout = setTimeout(async () => {
-        console.log('QR code expired after 15 seconds, closing session');
-        client.destroy();
-        delete allSectionObject[id];
-      }, 15000);
 
-      resolve({ message: 'QR Code generated', qrCode: qr });
-    });
+      // Initialize a new WhatsApp client
+      const client = new Client({
+        puppeteer: {
+          headless: true,
+          executablePath: os.platform() === 'win32' 
+            ? "C:/Program Files/Google/Chrome/Application/chrome.exe" 
+            : os.platform() === 'darwin' 
+            ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" 
+            : "/usr/bin/google-chrome"
+        },
+        authStrategy: new LocalAuth({ clientId: id })  // Client-specific session
+      });
 
-    client.on('ready', async () => {
-      console.log('Client is ready');
-      try {
-        clearTimeout(qrTimeout);
+      let qrTimeout;
+
+      // Handle QR code generation
+      client.on('qr', async (qr) => {
+        console.log('QR Code received:', qr);
+
+        // Check if the user session is already connected
+        const existingSession = await QRScan.findOne({ whatsappId: id });
+        if (existingSession && existingSession.status === 'Connected') {
+          console.log('Session already connected, QR code not required');
+          return resolve({ message: 'Session is already connected' });
+        }
+
+        // Set a 15-second timeout for QR code expiry
+        qrTimeout = setTimeout(async () => {
+          console.log('QR code expired after 15 seconds, destroying session');
+          await client.destroy();  // Close session if QR is not scanned
+          delete allSectionObject[id];  // Remove session from memory
+          await QRScan.findOneAndDelete({ whatsappId: id }); // Remove from DB if not connected
+          resolve({ message: 'QR code expired, session destroyed' });
+        }, 15000);
+
+        resolve({ message: 'QR Code generated', qrCode: qr });
+      });
+
+      // Handle successful connection (QR code scanned)
+      client.on('ready', async () => {
+        clearTimeout(qrTimeout);  // Clear QR timeout since user scanned the code
+        console.log('Client is ready');
+
         const phoneNumber = client.info.wid._serialized.split('@')[0];
+
+        // Update the session as connected in the database
         await QRScan.findOneAndUpdate(
           { whatsappId: id },
           { status: 'Connected', phoneNumber, qrCode: null },
           { new: true, upsert: true }
         );
+
+        // Save client session in memory for future reference
         phoneNumberToIdMap[phoneNumber] = id;
-        allSectionObject[id] = client;
-      } catch (error) {
-        console.error('Error saving QR scan data:', error);
-      }
-    });
-    const formattedNumber = `${number.replace('+', '')}@c.us`;
+        allSectionObject[id] = client;  // Store client session
+        resolve({ message: 'WhatsApp connected successfully', phoneNumber });
+      });
 
-    client.on('message', async (msg) => {
-      console.log('Message received:', msg);
-      try {
-        await Recived.create({
-          senderId: msg.from, // Add this field
-          senderNumber: msg.from,
-          recipientNumber: msg.to,
-          messageContent: msg.body,
-          messageType: msg.type,
-          receivedAt: new Date()
-        });
-      } catch (error) {
-        console.error('Error saving received message:', error);
-      }
-    });
+      // Handle client disconnection
+      client.on('disconnected', async (reason) => {
+        console.log('Client disconnected:', reason);
+        delete allSectionObject[id];  // Remove session from memory
+        await QRScan.findOneAndUpdate(
+          { whatsappId: id },
+          { status: 'Disconnected' },
+          { new: true }
+        );
+        resolve({ message: 'Client disconnected', reason });
+      });
 
-    client.on('disconnected', async (reason) => {
-      console.log('Client disconnected:', reason);
-      delete allSectionObject[id];
-    });
+      // Initialize the client to start WhatsApp connection
+      client.initialize();
 
-    client.on('auth_failure', (message) => {
-      console.error('Authentication failed:', message);
-    });
-
-    client.on('error', (error) => {
-      console.error('WhatsApp client error:', error);
-    });
-
-    client.initialize().then(() => {
-      console.log('WhatsApp client initialized');
-    }).catch((error) => {
-      console.error('Failed to initialize WhatsApp client:', error);
-    });
+    } catch (error) {
+      console.error('Error creating WhatsApp session:', error);
+      reject(error);
+    }
   });
 };
 

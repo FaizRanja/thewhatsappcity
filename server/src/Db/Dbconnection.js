@@ -3,7 +3,9 @@ const mongoose  = require("mongoose");
 
 const Databaseconnec=async ()=>{
     try {
-        const connection =await mongoose.connect(`${process.env.MONGOOSE_CONNECTION}`)
+        const connection =await mongoose.connect(`${process.env.MONGOOSE_CONNECTION}`
+            
+        )
 console.log("mongoose connection is successfully")
     } catch (error) {
         console.log("mongoose connection error" + error)

@@ -3,8 +3,9 @@ const User = require('../models/User.model');
 const sendToken = require('../utils/sendToken'); // Ensure this is the correct import
 const crypto = require('crypto');
 const ApiErrorHandler = require("../utils/ApiError.js");
-const AsynicHandler = require("../utils/AsynicHandler");
-const apifeatucher = require("../utils/Search.js");
+// const AsynicHandler = require("../utils/AsynicHandler");
+// const apifeatucher = require("../utils/Search.js");
+
 
 
 exports.Register = AsyncHandler(async (req, res, next) => {
